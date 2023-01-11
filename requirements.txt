@@ -42,7 +42,6 @@ dwcontents==1.0.0b5
 entrypoints==0.4
 executing==0.8.3
 fastjsonschema==2.16.2
-flake8==4.0.1
 flit_core==3.6.0
 fonttools==4.38.0
 gitdb==4.0.10
