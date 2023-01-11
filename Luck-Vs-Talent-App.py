@@ -8,6 +8,15 @@ aggregation_selectbox = st.sidebar.selectbox(
     ("Yes", "No")
 )
 
+st.title("Luck Vs Talent Simulation")
+p_luck = st.slider(
+    label="Probability Of Lucky Event", min_value=0.01, max_value=1.0,
+    value=.5
+)
+p_event = st.slider(
+    label="Probability Of Event", min_value=0.01, max_value=1.0,
+    value=.04
+)
 
 if aggregation_selectbox == "No":
     n_reps = 1
@@ -15,17 +24,8 @@ if aggregation_selectbox == "No":
 else:
     show_curve=True
     n_reps = 10
-
-st.title("Luck Vs Talent Simulation")
-p_luck = st.slider(
-    label="Probability Of Lucky Event", min_value=0.01, max_value=1.0,
-    value=.5
-)
-p_event = st.slider(
-    label="Probability Of Event", min_value=0.01, max_value=1.0
-)
-
-results, talent, A_lucky_event_counter = model.simulate(
+    
+results, talent = model.simulate(
     n_agents=10000, n_ticks=80, n_reps=n_reps, p_lucky=p_luck,
     init_capital=100, mu_talent=.6, sigma_talent=.1, p_event=p_event
 )
@@ -44,3 +44,10 @@ st.header("Estimate of Lognormal Wealth Distribution")
 lognormal_fig = plotting.plot_lognormal_estimate(results)
 st.plotly_chart(lognormal_fig)
 
+st.header("Log-log Plot")
+loglog_fig, slope, intercept = plotting.loglog_plot(results)
+st.plotly_chart(loglog_fig)
+
+st.header("Power Law Plot")
+power_law_fig = plotting.plot_power_law_estimate(results, slope, intercept)
+st.plotly_chart(power_law_fig)
