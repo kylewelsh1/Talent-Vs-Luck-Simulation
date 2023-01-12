@@ -2,7 +2,10 @@ import numpy as np
 import pandas as pd
 import plotly.figure_factory as ff
 import plotly.graph_objects as go
+import plotly.express as px
 import statsmodels.api as sm
+from scipy.stats import norm
+from scipy.stats import gaussian_kde
 
 
 def lognormal(x, mu, sigma) :
@@ -11,7 +14,8 @@ def lognormal(x, mu, sigma) :
 
 
 def loglog_plot(results):
-    bin_ranges = list(np.linspace(0, 1000, 70))
+    #bin_ranges = list(np.linspace(0, 1000, 70))
+    bin_ranges = list(np.linspace(0, np.max(results[:, -1, :].mean(axis=1)), 70))
     final_df = pd.DataFrame({"bin": bin_ranges[1:], "wealth_count": 0})
     binned_df = pd.DataFrame(
         {
@@ -42,15 +46,43 @@ def loglog_plot(results):
         go.Scatter(
             y=np.log(final_df["wealth_count"]),
             x=np.log(final_df["bin"]),
-            mode="markers"
+            mode="markers",
+            name="Binned Log-log Wealth"
             )
     )
-    fig.add_trace(go.Scatter(x=x_lin, y=y_lin, mode="lines"))
+    fig.add_trace(
+        go.Scatter(
+            x=x_lin, y=y_lin, mode="lines", name="Fitted Regression Line"
+            )
+        )
     return fig, slope, intercept
 
 
+def log_wealth_plot(results):
+    log_wealth = np.log(results[:, -1, :].mean(axis=1))
+    mu = log_wealth.mean()
+    sigma = log_wealth.std()
+    
+    x = np.linspace(-10, 10, 100)
+    y = norm.pdf(x, mu, sigma)
+    
+    fig = go.Figure()
+    
+    fig.add_trace(
+        go.Histogram(
+            x=log_wealth, histnorm='probability density', name="Histrogram"
+            )
+        )
+    fig.add_trace(
+        go.Scatter(
+            x=x, y=y, mode="lines", name="Estimated Normal Distribution"
+            )
+        )
+    return fig
+    
+
 def plot_power_law_estimate(results, slope, intercept):
-    x = np.linspace(.1, 5000, 2000)
+    x = np.linspace(.1, np.max(results[:, -1, :].mean(axis=1)), 2000)
     y = np.exp(intercept) * x**slope
     
     x_trimmed = x[y < 10000]
@@ -58,15 +90,18 @@ def plot_power_law_estimate(results, slope, intercept):
     
     fig = go.Figure()
     fig.add_trace(
-        go.Histogram(x=results[:, -1, :].mean(axis=1))
+        go.Histogram(x=results[:, -1, :].mean(axis=1), name="Histogram")
     )
-    fig.add_trace(go.Scatter(x=x_trimmed, y=y_trimmed))
+    fig.add_trace(go.Scatter(x=x_trimmed, y=y_trimmed, name="Estimated Power Law Distribution"))
     return fig
 
 
-def talented_vs_untalented_plot(results, talent, show_curve):
-    A_talented = np.where(talent >= .8)[0]
-    A_untalented = np.where(talent < .8)[0]
+def talented_vs_untalented_plot(
+        results, talent, show_curve, mu_talent, sigma_talent
+    ):
+    
+    A_talented = np.where(talent >= mu_talent + 2 * sigma_talent)[0]
+    A_untalented = np.where(talent < mu_talent + 2 * sigma_talent)[0]
     
     hist_data= [
         results[A_talented, -1, :].mean(axis=1),
@@ -105,19 +140,36 @@ def plot_lognormal_estimate(results):
     mu = np.log(results[:, -1, :].mean(axis=1)).mean()
     sigma = np.log(results[:, -1, :].mean(axis=1)).std()
     
-    x = np.linspace(.1, 2000, 5000)
+    x = np.linspace(.1, np.max(results[:, -1, :].mean(axis=1)), 2000)
     y = lognormal(x, mu, sigma)
-    
-    results_trimmed = results[:, -1, :].mean(axis=1) 
     
     fig = go.Figure()
     fig.add_trace(
         go.Histogram(
-            x=results_trimmed, histnorm='probability density',
+            x=results[:, -1, :].mean(axis=1), histnorm='probability density',
             name="Histogram"
         )
     )
     fig.add_trace(
         go.Scatter(x=x, y=y, name="Estimated Lognormal PDF")
+    )
+    return fig
+
+
+def talent_wealth_corr_plot(results, talent):
+    xy = np.vstack(
+        (
+            results[:, -1, :].mean(axis=1),
+            talent
+        )
+    )
+    z = gaussian_kde(xy)(xy)
+    idx = z.argsort()
+    fig = px.scatter(
+        x=results[:, -1, :].mean(axis=1), y=talent, color=z[idx]
+    )
+    fig.update_layout(
+        xaxis_title="Final Wealth",
+        yaxis_title="Talent"
     )
     return fig

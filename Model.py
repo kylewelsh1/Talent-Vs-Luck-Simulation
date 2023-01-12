@@ -1,4 +1,5 @@
 import numpy as np
+import streamlit as st
 from numba import njit
 
 
@@ -34,6 +35,7 @@ def model(n_agents, n_ticks, p_lucky, init_capital, p_event, A_talent):
     return A_capital, A_talent
 
 
+@st.cache
 @njit(nopython=True)
 def simulate(
     n_agents, n_ticks, n_reps, p_lucky,
