@@ -32,7 +32,7 @@ def model(n_agents, n_ticks, p_lucky, init_capital, p_event, A_talent):
         A_capital[not_capitalise_luck_idx, i] = (
             A_capital[not_capitalise_luck_idx, i - 1]
         )
-    return A_capital, A_talent
+    return A_capital
 
 
 @st.cache
@@ -42,19 +42,19 @@ def simulate(
     init_capital, mu_talent, sigma_talent, p_event
 ):
     A_talent = np.clip(
-        np.random.normal(mu_talent, sigma_talent, size=n_agents), 0, 1
+        np.random.normal(mu_talent, sigma_talent, size=(n_agents, n_reps)), 0, 1
     )
     AR_final_capital = np.zeros(
         (n_agents, n_ticks + 1, n_reps), dtype="float64"
     )
     for i in range(n_reps):
-        A_capital, A_talent = model(
+        A_capital = model(
             n_agents=n_agents,
             n_ticks=n_ticks,
             p_lucky=p_lucky,
             init_capital=init_capital,
             p_event=p_event,
-            A_talent=A_talent
+            A_talent=A_talent[:, i]
         )
         AR_final_capital[:, :, i] = A_capital
     return AR_final_capital, A_talent

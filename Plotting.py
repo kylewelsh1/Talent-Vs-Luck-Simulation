@@ -14,7 +14,7 @@ def lognormal(x, mu, sigma):
 
 
 @st.cache
-def create_binned_wealth_df(results, talent):
+def create_binned_wealth_dfs(results, talent):
     bin_ranges = list(
         np.linspace(0, np.max(results[:, -1, :]), 300)
     )
@@ -29,7 +29,7 @@ def create_binned_wealth_df(results, talent):
                 "Wealth_log": np.log(results[:, -1, i]),
                 "Bin": pd.cut(results[:, -1, i], bin_ranges),
                 "Bin_log": pd.cut(np.log(results[:, -1, i]), bin_ranges_log),
-                "Talent": talent
+                "Talent": talent[:, i]
             }
         )
         binned_df_list.append(binned_df)
@@ -69,7 +69,6 @@ def create_aggregated_df(binned_df_list, bin_ranges, bin_ranges_log):
     aggregated_df_log["mean_count_log"] = aggregated_df_log.drop(
         columns="bin_log"
     ).mean(axis=1)
-
     aggregated_df_log = aggregated_df_log[
         aggregated_df_log["mean_count_log"] > 0
     ]
@@ -77,6 +76,7 @@ def create_aggregated_df(binned_df_list, bin_ranges, bin_ranges_log):
     return aggregated_df, aggregated_df_log
 
 
+@st.cache
 def wealth_dist_plot(results_aggregated, bin_width):
     fig = go.Figure()
     fig.add_trace(
@@ -93,13 +93,20 @@ def wealth_dist_plot(results_aggregated, bin_width):
     return fig
 
 
-def loglog_plot(results):
+def fit_loglog_regression(results):
     Y = np.log(results["mean_count"])
     X = sm.add_constant(np.log(results["bin"]))
 
     mod = sm.OLS(Y, X).fit()
+    
     intercept = mod.params[0]
     slope = mod.params[1]
+    return slope, intercept
+
+
+@st.cache
+def loglog_plot(results):
+    slope, intercept = fit_loglog_regression(results)
 
     min_x = np.log(results["bin"]).min()
     max_x = np.log(results["bin"]).max()
@@ -128,39 +135,42 @@ def loglog_plot(results):
     return fig, slope, intercept
 
 
+@st.cache
 def plot_power_law_estimate(results, slope, intercept):
-    x = np.linspace(.1, results["bin"].max(), 2000)
-    y = np.exp(intercept) * x**slope
+    n_agents = results["mean_count"].sum()
 
-    x_trimmed = x[y < 10000]
-    y_trimmed = y[y < 10000]
+    x = np.linspace(.01, results["bin"].max(), 2000)
+    y = np.exp(intercept) * x**slope
 
     fig = go.Figure()
     fig.add_trace(
         go.Bar(
             x=results["bin"],
-            y=results["mean_count"],
+            y=results["mean_count"]/n_agents,
             name="Histogram"
             )
         )
-
     fig.add_trace(go.Scatter(
-        x=x_trimmed, y=y_trimmed, name="Estimated Power Law Distribution")
+        x=x, y=y/n_agents,
+        name="Estimated Power Law Distribution")
     )
     fig.update_layout(
         xaxis_title="Wealth Bin",
-        yaxis_title="Wealth Bin Count"
+        yaxis_title="Wealth Bin Percent",
+        xaxis_range=[0, results["bin"].quantile(.9)],
+        yaxis_range=[0, results["mean_count"].max()/n_agents]
     )
     return fig
 
 
+@st.cache
 def log_wealth_plot(results, bin_width):
     n_total_agents = results["mean_count_log"].sum()
-    
+
     results_unbinned = results.reindex(
         results.index.repeat(results["mean_count_log"])
     )
-    
+
     mu = results_unbinned["bin_log"].mean()
     sigma = results_unbinned["bin_log"].std()
 
@@ -188,8 +198,9 @@ def log_wealth_plot(results, bin_width):
     return fig
 
 
+@st.cache
 def plot_lognormal_estimate(results, results_log, bin_width):
-    n_total_agents = results["mean_count"].sum()
+    n_agents = results["mean_count"].sum()
     
     results_unbinned_log = results_log.reindex(
         results_log.index.repeat(results_log["mean_count_log"])
@@ -205,7 +216,7 @@ def plot_lognormal_estimate(results, results_log, bin_width):
     fig.add_trace(
         go.Bar(
             x=results["bin"],
-            y=(results["mean_count"]/n_total_agents) / bin_width,
+            y=(results["mean_count"]/n_agents) / bin_width,
             width=bin_width,
             name="Histogram"
             )
@@ -215,7 +226,10 @@ def plot_lognormal_estimate(results, results_log, bin_width):
     )
     fig.update_layout(
         xaxis_title="Wealth Bin",
-        yaxis_title="Wealth Bin Percent"
+        yaxis_title="Wealth Bin Percent",
+        xaxis_range=[0, results["bin"].quantile(.9)],
+        yaxis_range=[0, results["mean_count"].max()/(n_agents*bin_width)]
+        
     )
     return fig
 
@@ -226,7 +240,7 @@ def create_talented_untalented_df(
 ):
     df_talented = pd.DataFrame({"bin": bin_ranges[1:]})
     df_untalented = pd.DataFrame({"bin": bin_ranges[1:]})
-
+    
     for i in range(len(binned_df_list)):
         talented_df_binned = binned_df_list[i][
             binned_df_list[i]["Talent"] >= mu_talent + 2*sigma_talent
@@ -259,35 +273,60 @@ def create_talented_untalented_df(
     return df_talented, df_untalented
 
 
+@st.cache
 def talented_vs_untalented_plot(
         results_talented, results_untalented
 ):
     n_agents_talented = results_talented["mean_count"].sum()
-    n_agents_untalented = results_untalented["mean_count"].sum()
     
-    fig = go.Figure()
-    fig.add_trace(
-        go.Bar(
-            x=results_talented["bin"],
-            y=results_talented["mean_count"]/n_agents_talented,
-            name="Talented"
-            )
+    slope_talented, intercept_talented = fit_loglog_regression(
+        results_talented
+    )
+    slope_untalented, intercept_untalented = fit_loglog_regression(
+        results_untalented
+    )
+
+    fig_talented = plot_power_law_estimate(
+        results_talented, slope_talented, intercept_talented
+    )
+    newnames = {
+        'Histogram':'Histogram Talented',
+        'Estimated Power Law Distribution': 'Estimated Power Law Distribution Talented'
+    }
+    fig_talented.for_each_trace(
+        lambda t: t.update(
+            name = newnames[t.name],
+            legendgroup = newnames[t.name]
         )
-    fig.add_trace(
-        go.Bar(
-            x=results_untalented["bin"],
-            y=results_untalented["mean_count"]/n_agents_untalented,
-            marker_color="firebrick",
-            name="Untalented"
-            )
+    )
+
+    fig_untalented = plot_power_law_estimate(
+        results_untalented, slope_untalented, intercept_untalented
+    )
+    newnames = {
+        'Histogram':'Histogram Untalented',
+        'Estimated Power Law Distribution': 'Estimated Power Law Distribution Untalented'
+    }
+    fig_untalented.for_each_trace(
+        lambda t: t.update(
+            name = newnames[t.name],
+            legendgroup = newnames[t.name]
         )
+    )
+
+    fig = go.Figure(fig_talented.data + fig_untalented.data)
     fig.update_layout(
         xaxis_title="Wealth Bin",
-        yaxis_title="Wealth Bin Percent"
+        yaxis_title="Wealth Bin Percent",
+        xaxis_range=[0, results_talented["bin"].quantile(.9)],
+        yaxis_range=[
+            0, results_talented["mean_count"].max()/n_agents_talented
+        ]
     )
     return fig
 
 
+@st.cache
 def talent_wealth_corr_plot(results):
     results_long_df = pd.wide_to_long(
         results, "talent_mean", i="bin", j="test", sep="_"

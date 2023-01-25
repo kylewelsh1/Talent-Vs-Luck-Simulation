@@ -47,7 +47,7 @@ results, talent = model.simulate(
     p_event=p_event
 )
 
-binned_df_list, bin_ranges, bin_ranges_log = plotting.create_binned_wealth_df(
+binned_df_list, bin_ranges, bin_ranges_log = plotting.create_binned_wealth_dfs(
     results, talent
 )
 results_aggregated, results_aggregated_log = plotting.create_aggregated_df(
